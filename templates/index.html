@@ -1,0 +1,239 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>TheWay: планирование маршрутов судов</title>
+    <link rel="icon" href="/static/images/markers/end_point.png">
+</head>
+
+<body>
+<div class="container">
+    <div id="loader" style="display:none;"></div>
+
+    <div class="input_block">
+
+        <!-- Загрузка и обработка данных -->
+        <details>
+            <summary>Создание датасета</summary>
+            <form id="dataset-upload-form" enctype="multipart/form-data">
+                <div class="upload_field">
+                    <p class="upload-title">Данные о движении</p>
+                    <input type="file" id="file-positions" name="file-positions" accept=".csv,.xlsx"
+                           class="file-input-hidden">
+                    <label for="file-positions" class="file-upload-label">
+                        <span class="file-upload-button">Выберите файл</span>
+                        <span class="file-name">Файл не выбран</span>
+                    </label>
+                </div>
+                <div class="upload_field">
+                    <p class="upload-title">Данные о судах</p>
+                    <!-- Скрытый инпут -->
+                    <input type="file" id="file-marine" name="file-marine" accept=".csv,.xlsx"
+                           class="file-input-hidden">
+                    <!-- Видимая кастомная кнопка -->
+                    <label for="file-marine" class="file-upload-label">
+                        <span class="file-upload-button">Выберите файл</span>
+                        <span class="file-name">Файл не выбран</span>
+                    </label>
+                </div>
+                <div class="param-row">
+                    <label for="interpolation" style="font-weight: bold;">Интерполяция</label>
+                    <label class="switch">
+                        <input type="checkbox" id="interpolation" name="interpolation" checked>
+                        <span class="slider round"></span>
+                    </label>
+                </div>
+                <div class="param-row">
+                    <label for="interpolation_algorithm" id="interpolation_algorithm_label"
+                           title="Алгоритм временной интерполяции">interpolation_algorithm</label>
+                    <select id="interpolation_algorithm" name="interpolation_algorithm">
+                        <option value="linear" selected>Linear</option>
+                        <option value="spline">Spline</option>
+                    </select>
+                </div>
+                <div class="param-row">
+                    <label for="max_gap_minutes" id="max_gap_label"
+                           title="Максимальный разрыв в минутах между объектами интерполяции">max_gap_minutes</label>
+                    <input type="number" step="1" min="1" value="30" id="max_gap_minutes" name="max_gap_minutes">
+                </div>
+                <div class="param-row">
+                    <label for="dataset-name">Название датасета</label>
+                    <input type="text" id="dataset-name" name="dataset-name">
+                </div>
+                <div class="buttons">
+                    <button type="button" id="upload-btn" class="red_text">Создать датасет</button>
+                </div>
+            </form>
+            <div id="upload-error" class="message" style="color: #c82333; display:none;"></div>
+            <div id="upload-success" class="message" style="color: #28a745; display:none;"></div>
+            <div id="upload-loading" class="message" style="color: #007bff; display:none;">
+                Загрузка...
+            </div>
+        </details>
+
+
+        <!-- Выбор датасета -->
+        <details open>
+            <summary>Выбор датасета</summary>
+            <div id="dataset-container">
+                <div class="tabs">
+                    <button type="button" class="tab-btn active" onclick="showTab('all')">Все</button>
+                    <button type="button" class="tab-btn" onclick="showTab('mine')">Мои</button>
+                </div>
+
+                <div class="tab-content" id="tab-all">
+                </div>
+
+                <div class="tab-content" id="tab-mine" style="display: none;">
+                </div>
+            </div>
+            <div id="dataset-error" class="message" style="color: #c82333;"></div>
+            <div id="dataset-success" class="message" style="color: #28a745;"></div>
+            <div id="dataset-loading" class="message" style="color: #007bff;"></div>
+        </details>
+
+        <!-- Кластеризация -->
+        <details open>
+            <summary>Кластеризация</summary>
+            <div class="param-row">
+                <label for="weight_distance" title="Вес расстояния для метрики DBSCAN">weight_distance</label>
+                <input type="number" min="0" step="0.1" value="{{ clustering_params['weight_distance'] }}"
+                       id="weight_distance">
+            </div>
+            <div class="param-row">
+                <label for="weight_speed" title="Вес скорости для метрики DBSCAN">weight_speed</label>
+                <input type="number" min="0" step="0.1" value="{{ clustering_params['weight_speed'] }}"
+                       id="weight_speed">
+            </div>
+            <div class="param-row">
+                <label for="weight_course" title="Вес курса для метрики DBSCAN">weight_course</label>
+                <input type="number" min="0" step="0.1" value="{{ clustering_params['weight_course'] }}"
+                       id="weight_course">
+            </div>
+            <div class="param-row">
+                <label for="eps"
+                       title="Максимальное расстояние (по метрике) между объектами для признания их соседними в алгоритме DBSCAN">eps</label>
+                <input type="number" min="0" step="0.001" value="{{ clustering_params['eps'] }}" id="eps">
+            </div>
+            <div class="param-row">
+                <label for="min_samples"
+                       title="Минимальное число соседей, необходимое для признания объекта ядровым в алгоритме DBSCAN">min_samples</label>
+                <input type="number" min="0" value="{{ clustering_params['min_samples'] }}" id="min_samples">
+            </div>
+            <div class="param-row">
+                <label for="metric_degree" title="Степень метрики для алгоритма DBSCAN">metric_degree</label>
+                <input type="number" step="0.1" min="1" value="{{ clustering_params['metric_degree'] }}"
+                       id="metric_degree">
+            </div>
+            <div class="param-row">
+                <label for="hull_type" title="Форма оболочки для полигонов (convex - выпуклая, concave - вогнутая)">hull_type</label>
+                <select id="hull_type">
+                    <option value="convex_hull" {% if clustering_params['hull_type']=='convex_hull' %}
+                            selected {% endif %}>convex
+                    </option>
+                    <option value="concave_hull" {% if clustering_params['hull_type']=='concave_hull' %}
+                            selected {% endif %}>concave
+                    </option>
+                </select>
+            </div>
+            <div class="buttons">
+                <button id="do_cluster" class="red_text" onclick="Do_clustering()">Кластеризовать данные и выделить
+                    полигоны
+                </button>
+            </div>
+        </details>
+
+        <!-- Планирование маршрута -->
+        <details>
+            <summary>Планирование маршрута</summary>
+            <div class="param-row">
+                <label for="points_inside" title="Добавление точек внутрь пересечений полигонов">points_inside</label>
+                <label class="switch">
+                    <input type="checkbox" id="points_inside" name="points_inside"
+                            {% if graph_params['points_inside'] %} checked {% endif %}>
+                    <span class="slider round"></span>
+                </label>
+            </div>
+            <div class="param-row">
+                <label for="distance_delta" title="Расстояние между генерируемыми точками в пересечениях полигонов">distance_delta</label>
+                <input type="number" min="0" step="0.1" value="{{ graph_params['distance_delta'] }}"
+                       id="distance_delta">
+            </div>
+            <div class="param-row">
+                <label for="angle_of_vision"
+                       title="Угол обзора для узла, в пределах которого возможно добавить ребра в граф">angle_of_vision</label>
+                <input type="number" min="0" step="0.1" value="{{ graph_params['angle_of_vision'] }}"
+                       id="angle_of_vision">
+            </div>
+            <div class="param-row">
+                <label for="weight_func_degree" title="Степень весовой функции ребра графа">weight_func_degree</label>
+                <input type="number" step="1" min="1" value="{{ graph_params['weight_func_degree'] }}"
+                       id="weight_func_degree">
+            </div>
+            <div class="param-row">
+                <label for="weight_time_graph" title="Вес времени прохождения для ребер графа">weight_time_graph</label>
+                <input type="number" min="0" step="0.1" value="{{ graph_params['weight_time_graph'] }}"
+                       id="weight_time_graph">
+            </div>
+            <div class="param-row">
+                <label for="weight_course_graph" title="Вес соответствия направления среднекластерному для ребер графа">weight_course_graph</label>
+                <input type="number" min="0" step="0.01" value="{{ graph_params['weight_course_graph'] }}"
+                       id="weight_course_graph">
+            </div>
+            <div class="param-row">
+                <label for="search_algorithm" title="Алгоритм поиска по графу">search_algorithm</label>
+                <select id="search_algorithm">
+                    <option value="Dijkstra" {% if graph_params['search_algorithm']=='Dijkstra' %} selected {% endif %}>
+                        Dijkstra
+                    </option>
+                    <option value="A*" {% if graph_params['search_algorithm']=='A*' %} selected {% endif %}>A*</option>
+                </select>
+            </div>
+            <div class="param-row">
+                <label for="start_coords" title="Начальная точка маршрута">start_coords</label>
+                <div class="coord-input-wrapper">
+                    <input type="text" placeholder="lat, lon" id="start_coords">
+                    <button class="map-picker-btn" id="pick-start-btn" title="Выбрать начальную точку на карте">🎯
+                    </button>
+                </div>
+            </div>
+            <div class="param-row">
+                <label for="end_coords" title="Конечная точка маршрута">end_coords</label>
+                <div class="coord-input-wrapper">
+                    <input type="text" placeholder="lat, lon" id="end_coords">
+                    <button class="map-picker-btn" id="pick-end-btn" title="Выбрать конечную точку на карте">🎯</button>
+                </div>
+            </div>
+            <div class="buttons">
+                <button id="do_graph" class="red_text" onclick="Create_graph()">Построить граф и спланировать маршрут
+                </button>
+            </div>
+        </details>
+        <button class="logout-button">
+            <div class="icon"></div>
+            <div class="text">Выйти</div>
+        </button>
+    </div>
+
+    <div class="map_block">
+        <div id="map" class="map"></div>
+        <div id="legend" class="hide">
+            <div>Сначала необходимо кластеризовать данные!</div>
+        </div>
+    </div>
+</div>
+</body>
+
+<link rel="stylesheet" href="/static/CSS/main.css" type="text/css">
+<script src="https://cdn.jsdelivr.net/npm/ol@v10.5.0/dist/ol.js"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/ol@v10.5.0/ol.css">
+<link rel="stylesheet" href="https://cdn.rawgit.com/Viglino/ol-ext/master/dist/ol-ext.min.css"/>
+<script type="text/javascript" src="https://cdn.rawgit.com/Viglino/ol-ext/master/dist/ol-ext.min.js"></script>
+<script src="https://cdn.socket.io/4.6.0/socket.io.min.js"
+        integrity="sha384-c79GN5VsunZvi+Q/WObgk2in0CbZsHnjEqvFxC5DxHn9lTfNce2WW6h2pH6u/kF+"
+        crossorigin="anonymous"></script>
+<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.1.2/socket.io.js"></script>
+<script src="/static/JS/script.js"></script>
+
+</html>
