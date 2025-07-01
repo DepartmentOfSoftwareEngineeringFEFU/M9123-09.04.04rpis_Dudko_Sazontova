@@ -11,3 +11,4 @@
 .gitattributes
 __pycache__
 flask.exe
+.env
